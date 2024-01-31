@@ -1,9 +1,5 @@
 import os
 import sys
-import requests
-import datetime
-import pytz
-import time
 
 from flask import Flask, request, abort
 
@@ -12,7 +8,6 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, UserSource
 from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, TextMessage, ReplyMessageRequest
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.webhooks.models import event
 
 from openai import AzureOpenAI
 
@@ -33,11 +28,6 @@ if azure_openai_endpoint is None or azure_openai_key is None:
         "Please set the environment variables AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY to your Azure OpenAI endpoint and API key."
     )
 
-# get OpenWeatherMap API key from environment variables
-weather_api_key = os.getenv("OPENWEATHERMAP_API_KEY")
-
-if weather_api_key is None:
-    raise Exception("Please set the environment variable OPENWEATHERMAP_API_KEY with your OpenWeatherMap API key.")
 
 app = Flask(__name__)
 
@@ -52,11 +42,13 @@ system_role = """
 """
 conversation = None
 
+
 def init_conversation(sender):
     conv = [{"role": "system", "content": system_role}]
     conv.append({"role": "user", "content": f"私の名前は{sender}です。"})
     conv.append({"role": "assistant", "content": "分かりました。"})
     return conv
+
 
 def get_ai_response(sender, text):
     global conversation
@@ -73,49 +65,24 @@ def get_ai_response(sender, text):
         conversation.append({"role": "assistant", "content": response_text})
     return response_text
 
-def get_weather():
-    api_url = "http://api.openweathermap.org/data/2.5/weather"
-    params = {
-        "q": "Kobe,JP",
-        "appid": weather_api_key,
-        "units": "metric",
-    }
-
-    response = requests.get(api_url, params=params)
-    weather_data = response.json()
-
-    if response.status_code == 200:
-        weather_description = weather_data["weather"][0]["description"]
-        temperature = weather_data["main"]["temp"]
-        return f"今日の天気は{weather_description}で、気温は{temperature}℃です。"
-    else:
-        return "天気情報の取得に失敗しました。"
-
-def notify_weather():
-    now = datetime.datetime.now(pytz.timezone("Asia/Tokyo"))
-    if now.hour == 6 and now.minute == 0:
-        with ApiClient(configuration) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            weather_message = get_weather()
-            line_bot_api.push_message_with_http_info(
-                event.source.user_id,
-                ReplyMessageRequest(
-                    messages=[TextMessage(text=weather_message)],
-                )
-            )
 
 @app.route("/callback", methods=["POST"])
 def callback():
+    # get X-Line-Signature header value
     signature = request.headers["X-Line-Signature"]
+
+    # get request body as text
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
 
+    # handle webhook body
     try:
         handler.handle(body, signature)
     except InvalidSignatureError as e:
         abort(400, e)
 
     return "OK"
+
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
@@ -131,19 +98,14 @@ def handle_text_message(event):
                     messages=[TextMessage(text=response)],
                 )
             )
-            notify_weather()
+        else:
+            line_bot_api.reply_message_with_http_info(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="Received message: " + text)],
+                )
+            )
+
 
 if __name__ == "__main__":
-    while True:
-        # 毎朝六時に天気を通知する
-        now = datetime.datetime.now(pytz.timezone("Asia/Tokyo"))
-        if now.hour == 6 and now.minute == 0:
-            notify_weather()
-            # 一度通知したら1日待つ
-            time.sleep(24 * 60 * 60)
-        else:
-            # 未来の6時まで待機
-            next_six_am = now.replace(hour=6, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
-            time_until_next_six_am = (next_six_am - now).total_seconds()
-            time.sleep(time_until_next_six_am)
     app.run(host="0.0.0.0", port=8000, debug=True)
