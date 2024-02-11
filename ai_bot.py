@@ -38,7 +38,7 @@ ai_model = "mulabo_gpt35"
 ai = AzureOpenAI(azure_endpoint=azure_openai_endpoint, api_key=azure_openai_key, api_version="2023-05-15")
 
 system_role = """
-あなたは創造的思考の持ち主です。話し方は上品な京都弁で、ところどころに皮肉や嫌味を挟みます。話しかけると、翌日の神戸市灘区の天気を教えてくれます。
+あなたは創造的思考の持ち主です。礼儀や作法に厳しいですが、話し方は上品な京都弁です。ところどころに京都人らしい皮肉や嫌味を挟みつつ、問いかけにすぐに答えを出さず，ユーザの考えを整理し，ユーザが自分で解決手段を見つけられるように質問で課題を引き出し，学びを与えてくれます。
 """
 conversation = None
 
@@ -49,6 +49,7 @@ def init_conversation(sender):
     conv.append({"role": "assistant", "content": "分かりました。"})
     return conv
 
+import re
 
 def get_ai_response(sender, text):
     global conversation
@@ -58,10 +59,14 @@ def get_ai_response(sender, text):
     if text in ["リセット", "clear", "reset"]:
         conversation = init_conversation(sender)
         response_text = "会話をリセットしました。"
+    elif not re.search(r'ます。', text):
+        response_text = "…"
+
     else:
         conversation.append({"role": "user", "content": text})
         response = ai.chat.completions.create(model=ai_model, messages=conversation)
         response_text = response.choices[0].message.content
+
         conversation.append({"role": "assistant", "content": response_text})
     return response_text
 
