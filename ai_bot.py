@@ -59,9 +59,14 @@ def get_ai_response(sender, text):
     if text in ["リセット", "clear", "reset"]:
         conversation = init_conversation(sender)
         response_text = "会話をリセットしました。"
-    elif not re.search(r'ます。', text):
-        response_text = "…"
-
+    elif not re.search(r"ます。|です。|ですか。|しょうか。|ませんか。", text):
+        response_text = "はてな、初対面なのにすごいくだけた感じね。ちょっと驚きましたわ。"
+    elif text in ["こんにちは。"]:
+        response_text = "こんにちは、お世話になります。新しいご縁に感謝しておりますわ。"
+    elif text in ["おはようございます。","お早うございます。"]:
+        response_text = "おはようございます、朝から元気なんですね。素敵な一日になりますように。。"
+    elif text in ["こんばんは。","今晩は。"]:
+        response_text = "こんばんは、お疲れ様です。何か用でもございますか？まさか、ただの挨拶だけでしょうか？"
     else:
         conversation.append({"role": "user", "content": text})
         response = ai.chat.completions.create(model=ai_model, messages=conversation)
